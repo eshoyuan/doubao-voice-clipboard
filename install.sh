@@ -4,6 +4,25 @@ set -euo pipefail
 repo_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 hs_app="/Applications/Hammerspoon.app"
 agent_label="local.doubao.voiceclipboard.bridge"
+trigger=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --trigger)
+      if [[ $# -lt 2 || -z "$2" ]]; then echo "--trigger needs a shortcut" >&2; exit 2; fi
+      trigger="$2"
+      shift 2
+      ;;
+    --help)
+      echo "Usage: bash install.sh [--trigger right-option|fn|control+space|keycode:NN]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 if [[ ! -d "$hs_app" ]]; then
   echo "Install Hammerspoon in /Applications first." >&2
@@ -26,6 +45,22 @@ if [[ ! -x "$hs_cli" ]]; then
 fi
 
 hs_dir="$(python3 -c 'from pathlib import Path; print(Path.home() / ".hammerspoon")')"
+agent_file="$(python3 -c 'from pathlib import Path; print(Path.home() / "Library/LaunchAgents/local.doubao.voiceclipboard.bridge.plist")')"
+if [[ -z "$trigger" ]]; then
+  trigger="$(python3 - "$agent_file" <<'PY'
+from pathlib import Path
+import plistlib
+import sys
+path = Path(sys.argv[1])
+if path.exists():
+    args = plistlib.loads(path.read_bytes()).get("ProgramArguments", [])
+    if "--trigger" in args and args.index("--trigger") + 1 < len(args):
+        print(args[args.index("--trigger") + 1])
+        raise SystemExit
+print("right-option")
+PY
+)"
+fi
 mkdir -p "$hs_dir"
 history_dir="$(python3 -c 'from pathlib import Path; print(Path.home() / "Library/Application Support/DoubaoVoiceClipboard")')"
 mkdir -p "$history_dir"
@@ -38,13 +73,18 @@ bridge_hash="$(shasum -a 256 "$repo_dir/DoubaoHIDBridge.swift" | cut -d ' ' -f 1
 hash_file="$hs_dir/.doubao-bridge-source.sha256"
 if [[ ! -x "$hs_dir/doubao-hid-bridge" || ! -f "$hash_file" || "$(cat "$hash_file")" != "$bridge_hash" ]]; then
   swiftc "$repo_dir/DoubaoHIDBridge.swift" -o "$hs_dir/.doubao-hid-bridge.new"
+  if ! "$hs_dir/.doubao-hid-bridge.new" --validate-trigger "$trigger"; then
+    rm -f "$hs_dir/.doubao-hid-bridge.new"
+    exit 2
+  fi
   mv -f "$hs_dir/.doubao-hid-bridge.new" "$hs_dir/doubao-hid-bridge"
   chmod 755 "$hs_dir/doubao-hid-bridge"
   printf '%s\n' "$bridge_hash" > "$hash_file"
   echo "Bridge built. macOS may require Input Monitoring permission again after an update."
 fi
+"$hs_dir/doubao-hid-bridge" --validate-trigger "$trigger"
 
-python3 - "$hs_dir" "$hs_cli" <<'PY'
+python3 - "$hs_dir" "$hs_cli" "$trigger" <<'PY'
 from pathlib import Path
 import plistlib
 import shutil
@@ -52,6 +92,7 @@ import sys
 
 hs_dir = Path(sys.argv[1])
 hs_cli = sys.argv[2]
+trigger = sys.argv[3]
 init_file = hs_dir / "init.lua"
 old = init_file.read_text() if init_file.exists() else ""
 start = "-- doubao-voice-clipboard:start"
@@ -72,7 +113,7 @@ agent_file = Path.home() / "Library/LaunchAgents/local.doubao.voiceclipboard.bri
 agent_file.parent.mkdir(parents=True, exist_ok=True)
 agent = {
     "Label": "local.doubao.voiceclipboard.bridge",
-    "ProgramArguments": [str(hs_dir / "doubao-hid-bridge"), hs_cli],
+    "ProgramArguments": [str(hs_dir / "doubao-hid-bridge"), hs_cli, "--trigger", trigger],
     "RunAtLoad": True,
     "KeepAlive": True,
     "ThrottleInterval": 10,
@@ -104,4 +145,5 @@ launchctl bootstrap "gui/$(id -u)" "$(python3 -c 'from pathlib import Path; prin
 
 echo "Installed. Give the bridge Input Monitoring permission, then restart it with:"
 echo "launchctl kickstart -k gui/$(id -u)/$agent_label"
+echo "Voice trigger: $trigger"
 echo "Voice history: $history_dir/history.txt"

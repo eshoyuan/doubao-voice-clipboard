@@ -1,35 +1,22 @@
-# 豆包语音输入自动复制到剪贴板（macOS）
+# 豆包语音输入自动复制与存档（macOS）
 
-按住**右 Option** 用豆包输入法说话，松开后，本轮输入的文字会写入 **macOS 系统剪贴板**，同时仍正常留在输入框里。每次成功捕获的内容还会附上时间，追加保存到本地文件。
+豆包语音输入结束后，工具会把本轮文字复制到 **macOS 系统剪贴板**，并将本地时间和原文追加到 `~/Library/Application Support/DoubaoVoiceClipboard/history.txt`。输入框里的文字照常保留。
 
-## 安装
+适用于豆包输入法的**按住说话、松开结束**快捷键。触发键可配置；右 Option 只是首次安装时的默认值。
 
-需要 [Hammerspoon](https://www.hammerspoon.org/)（放在 `/Applications`）、豆包输入法，以及 Xcode Command Line Tools。尚未安装命令行工具时，先运行 `xcode-select --install`。豆包的语音快捷键需设为**长按右 Option、松开结束**。
+## 让 Agent 安装
 
-```bash
-git clone https://github.com/eshoyuan/doubao-voice-clipboard.git
-cd doubao-voice-clipboard
-bash install.sh
-```
+把下面这段话发给能操作你 Mac 的编程 Agent：
 
-安装脚本会编译按键桥接程序、将 Lua 脚本接入 Hammerspoon，并设置登录后自动启动。它会保留已有的 Hammerspoon 配置，并在第一次修改时备份 `init.lua`。再次运行安装脚本更新程序时，已有的语音记录不会被清空。
+> 请在我的 Mac 上安装或更新 [doubao-voice-clipboard](https://github.com/eshoyuan/doubao-voice-clipboard)。先阅读仓库的 [AGENTS.md](AGENTS.md)，检查我在豆包输入法里实际使用的“按住说话”快捷键，并让桥接程序与它一致。保留我现有的 Hammerspoon 配置和语音记录，协助完成 macOS 权限设置，最后用一次真实语音输入验证复制和存档。
 
-然后在 **系统设置 → 隐私与安全性** 中允许：
+Agent 会使用 `install.sh --trigger '快捷键'` 配置触发键。可以是 `right-option`、`fn`、`control+space` 等；也支持 `keycode:NN` 指定物理键码。再次安装而不传 `--trigger` 时，会保留已配置的键。若 Agent 无法读取豆包设置，它会询问你当前使用的快捷键。
 
-1. **辅助功能**：开启 Hammerspoon。
-2. **输入监控**：点击 `+`，添加 `~/.hammerspoon/doubao-hid-bridge` 并开启。文件夹是隐藏的，可在文件选择器按 `⌘⇧G`，粘贴这个路径。
-
-授权输入监控后，运行：
-
-```bash
-launchctl kickstart -k gui/$(id -u)/local.doubao.voiceclipboard.bridge
-```
-
-如果安装脚本提示 Hammerspoon 配置未加载，请从 Hammerspoon 菜单选择 **Reload Config**。测试时，在一个普通输入框里按住右 Option 说一句话，松开后试着粘贴。
+安装需要豆包输入法、[Hammerspoon](https://www.hammerspoon.org/) 和 Xcode Command Line Tools。macOS 的**辅助功能**与**输入监控**授权可能需要你在系统设置中点击允许，Agent 会引导完成。
 
 ## 语音记录
 
-记录保存在 `~/Library/Application Support/DoubaoVoiceClipboard/history.txt`。每条先写本地时间，再原样写入本轮文字，条目之间留一个空行。例如：
+每条记录是本地时间、原文和一个空行：
 
 ```text
 2026-09-27 09:30:00 -0700
@@ -37,28 +24,8 @@ launchctl kickstart -k gui/$(id -u)/local.doubao.voiceclipboard.bridge
 
 ```
 
-用文本编辑器打开：
+工具只追加记录，不自动删除；更新程序也不会清空文件。文件和所在目录只对当前用户开放。要长期保留，请将文件纳入备份。安装之前的输入无法补录。
 
-```bash
-open -a TextEdit "$HOME/Library/Application Support/DoubaoVoiceClipboard/history.txt"
-```
+## 使用范围
 
-工具只追加记录，不会自动删除。文件和所在目录仅当前用户可访问；要长期保留，请将该文件纳入自己的备份。更新前已经完成的语音输入无法补录。
-
-## 说明
-
-- 每次成功捕获后，转写会**替换系统剪贴板的当前内容**，随后写入语音记录文件；即使保存文件失败，已复制的文字仍可粘贴，错误会显示在 Hammerspoon 状态里。
-- 工具只读取当前输入框在本轮语音前后的变化。密码框和无法通过 macOS 辅助功能读取文字的输入框会跳过，因此不能保证每个应用都适用。
-- 桥接程序只处理右 Option 的按下与松开；转写内容只保存在上述文件里，不写入程序日志。macOS 的“输入监控”权限本身允许程序监测键盘事件，请按需审阅源码。
-
-## 排查
-
-查看 Hammerspoon 最近一次状态：
-
-```bash
-hs -c 'print(doubaoVoiceClipboard.lastStatus)'
-```
-
-若 `hs` 不在 `PATH`，可用 `/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs` 代替。若日志里出现 `Input Monitoring granted: false`，在系统设置中删除旧的同名权限记录，重新添加当前安装路径，再执行上面的 `launchctl kickstart` 命令。
-
-更新项目时运行 `git pull && bash install.sh`。如果桥接源码更新，macOS 可能要求重新授予输入监控权限。
+工具通过 macOS 辅助功能读取当前输入框前后的变化。密码框及无法被读取的输入框会跳过，因此不能保证每个应用都适用。每次成功捕获后，文字会替换系统剪贴板的当前内容；如果写入记录文件失败，复制仍可用，错误会显示在 Hammerspoon 状态里。

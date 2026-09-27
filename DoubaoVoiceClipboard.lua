@@ -8,6 +8,7 @@ local timer
 
 M.lastStatus = "not started"
 M.history = {}
+M.archivePath = os.getenv("HOME") .. "/Library/Application Support/DoubaoVoiceClipboard/history.txt"
 
 local function status(message)
     M.lastStatus = message
@@ -24,6 +25,26 @@ local function cancel(reason)
     stopTimer()
     active = nil
     if reason then status(reason) end
+end
+
+local function saveTranscript(text)
+    -- The installer creates this file with owner-only permissions. Do not
+    -- silently create a new file with Lua's default, possibly public, mode.
+    if hs.fs.attributes(M.archivePath, "mode") ~= "file" then
+        return false, "history file is missing"
+    end
+    local file, openError = io.open(M.archivePath, "a")
+    if not file then return false, openError end
+    local written, writeError = file:write(os.date("%Y-%m-%d %H:%M:%S %z"), "\n", text, "\n\n")
+    if not written then
+        file:close()
+        return false, writeError
+    end
+    local flushed, flushError = file:flush()
+    local closed, closeError = file:close()
+    if not flushed then return false, flushError end
+    if not closed then return false, closeError end
+    return true
 end
 
 local function focused()
@@ -90,7 +111,12 @@ local function poll()
     if not inserted then return end
     if M.extract(c.before, c.observed) and c.changedAt and now - c.changedAt < 0.5 then return end
     if hs.pasteboard.setContents(inserted) then
-        status("copied " .. tostring(utf8.len(inserted) or #inserted) .. " characters")
+        local saved, saveError = saveTranscript(inserted)
+        if saved then
+            status("copied and saved " .. tostring(utf8.len(inserted) or #inserted) .. " characters")
+        else
+            status("copied but could not save history: " .. tostring(saveError))
+        end
     else
         status("failed to write clipboard")
     end

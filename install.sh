@@ -27,6 +27,11 @@ fi
 
 hs_dir="$(python3 -c 'from pathlib import Path; print(Path.home() / ".hammerspoon")')"
 mkdir -p "$hs_dir"
+history_dir="$(python3 -c 'from pathlib import Path; print(Path.home() / "Library/Application Support/DoubaoVoiceClipboard")')"
+mkdir -p "$history_dir"
+chmod 700 "$history_dir"
+touch "$history_dir/history.txt"
+chmod 600 "$history_dir/history.txt"
 cp "$repo_dir/DoubaoVoiceClipboard.lua" "$hs_dir/DoubaoVoiceClipboard.lua"
 
 bridge_hash="$(shasum -a 256 "$repo_dir/DoubaoHIDBridge.swift" | cut -d ' ' -f 1)"
@@ -99,3 +104,4 @@ launchctl bootstrap "gui/$(id -u)" "$(python3 -c 'from pathlib import Path; prin
 
 echo "Installed. Give the bridge Input Monitoring permission, then restart it with:"
 echo "launchctl kickstart -k gui/$(id -u)/$agent_label"
+echo "Voice history: $history_dir/history.txt"
